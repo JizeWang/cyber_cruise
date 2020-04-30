@@ -86,7 +86,9 @@ double curSpeedErr;//speed error   		                     //
 double speedErrSum=0;//sum of speed error(Integration)       //
 int startPoint;											     //
 int startPoint1;
-int delta=20;			//8									 //
+int ld;
+int kk;
+int delta=10;			//8									 //
 //***********************************************************//
 
 //*******************Other parameters*******************//
@@ -127,7 +129,13 @@ static void userDriverGetParam(float midline[200][2], float yaw, float yawrate, 
 	_rpm = rpm;
 	_gearbox = gearbox;
 }
-
+//******************** Global Variables for OpenCV Visualization *******************//
+// Shiyi Wu 2020.03.17																//
+// Under Development																//
+cls_VISUAL cls_visual;																//
+int nKey = 0;																		//
+char cKeyName[512];																	//
+//**********************************************************************************//
 static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, int* cmdGear){
 	if(parameterSet==false)		// Initialization Part
 	{
@@ -135,27 +143,29 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 	}
 	else
 	{
+		
+
 		offset = 0;// _midline[0][0];
 
 		/*
 		You can modify the limited speed in this module
 		Enjoy  -_-  
 		*/
-		startPoint = _speed * _speed*0.0015;
-		startPoint1 =startPoint + 20;
-		c = getR(_midline[startPoint][0],_midline[startPoint][1],_midline[startPoint+delta][0],_midline[startPoint+delta][1],_midline[startPoint+2*delta][0],_midline[startPoint+2*delta][1]);
-		c1 = getR(_midline[startPoint1][0], _midline[startPoint1][1], _midline[startPoint1 + delta][0], _midline[startPoint1 + delta][1], _midline[startPoint1 + 2 * delta][0], _midline[startPoint1 + 2 * delta][1]);
-		/*
-		if ( abs(_midline[0][0] - _midline[20][0])<0.3 &&abs(_midline[0][0] == _midline[40][0])<0.3 
-			&& abs(_midline[0][0] == _midline[60][0]) < 0.3 && abs(*cmdSteer) < 0.08) //直道检测，比较稳定的方法
-			expectedSpeed = 400;  
-		*/
 		
+		startPoint = _speed * _speed*0.0015;
+		startPoint1 =0;
+		c = getR(_midline[startPoint][0],_midline[startPoint][1],_midline[startPoint+delta][0],_midline[startPoint+delta][1],_midline[startPoint+2*delta][0],_midline[startPoint+2*delta][1]);
+		c1 = getR(_midline[startPoint1][0], _midline[startPoint1][1], _midline[startPoint1 +5][0], _midline[startPoint1 +5][1], _midline[startPoint1 + 10][0], _midline[startPoint1 + 10][1]);
+		
+		if (c.r < 40) kd_d = 140;
+		else if (c.r < 150) kd_d = 90;
+		else kd_d = 30;
 
 		if (c.r <= 60)
 		{
 			expectedSpeed = constrain(60, 100, c.r * c.r * (-0.046) + c.r * 5.3 - 59.66);
 		}
+		else if (c.r <= 200) expectedSpeed = 150;
 		else
 		{
 			expectedSpeed = constrain(100, 400, sqrt(c.r) * 18);
@@ -164,34 +174,39 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 		curSpeedErr = expectedSpeed - _speed;
 		speedErrSum = 0.1 * speedErrSum + curSpeedErr;
 		double aaaa = (kp_s * curSpeedErr + ki_s * speedErrSum + offset)/ 2000;
-		double cccc = (-kp_s * curSpeedErr / 5 - offset / 3) / 600;
+		double cccc = (-kp_s * curSpeedErr / 5 - offset / 3) / 60;
 		if (curSpeedErr > 0)
 		{
-			if (_speed < 60) {
-				 *cmdAcc = 1;
-				
+			
+			
+			if (_speed < 30) {
+				*cmdAcc = 1;
+
 				*cmdBrake = 0;
 			}
 			else {
-				if (abs(*cmdSteer) < 0.85)
+			
+				if (abs(*cmdSteer) < 0.8)
 				{
-				
-				 *cmdAcc = constrain(0.0, 1.0, aaaa);
-					
+
+					*cmdAcc = constrain(0.0, 1.0, aaaa);
+
 					*cmdBrake = 0;
 				}
+				
 				else if (abs(*cmdSteer) > 0.9)
 				{
 					*cmdAcc = 0.01 + offset;
 					*cmdBrake = 0;
 				}
+				
 				else
 				{
 					*cmdAcc = 0.11 + offset;
 					*cmdBrake = 0;
 				}
 			}
-		
+		    
 		}
 		else if (curSpeedErr < 0)
 		{
@@ -208,39 +223,21 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 		Once you choose the error model, you can rectify the value of PID to improve your control performance.
 		Enjoy  -_-  
 		*/
-		// Direction Control		
 
 		/*
-		Dacc = _acc - Tmpacc;
-		Tmpacc = _acc;
-		Dcmd = abs(*cmdAcc) - Tmpcmd;
-		Tmpcmd = abs(*cmdAcc);
-		ratio = Dacc / Dcmd /100;
-		if (abs(ratio) > 900 && abs(ratio)<1000) {
-			kp_s = 25;
-		    ki_s = 0.8;
-		    kd_s = 0;
-			kp_d = 30;//24.9
-			ki_d = 0;
-			kd_d = 130;//140
-			delta = 8;
-			
-		}
-        */
-		//std::fstream file;
-		//FILE *fp;
-		    
-
 				
 				FILE* pFile = fopen("data.txt", "a");
 				if (pFile != NULL)
 				fprintf(pFile,"%f\n" ,abs(*cmdAcc));
-
+        */
 			
 		//get the error 
-				D_err = -atan2(_midline[30][0]-1.5 , _midline[30][1]);
-		
-	
+				//D_err = -atan2(_midline[25][0] , _midline[25][1]);
+				ld = 4;
+				D_err = -atan2(2 * 2 * 1.37*_midline[ld][0], ld*ld);
+				//kk = 40;
+				//D_err = _yaw - atan2(kk * _midline[0][0], _speed);
+	           
 		//the differential and integral operation 
 		D_errDiff = D_err - Tmp;
 		D_errSum = D_errSum + D_err;
@@ -249,21 +246,26 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 		Y_errDiff = _yaw - Tmp2;
 		Y_errSum = Y_errSum + _yaw;
 		Tmp2 = _yaw;
-		double bbbb = kp_d * D_err + ki_d * D_errSum + kd_d * D_errDiff+ 3 * (double)_yaw + 5 * Y_errDiff + 0 * Y_errSum;
+		double bbbb = (kp_d * D_err + ki_d * D_errSum + kd_d * D_errDiff+ 3 * (double)_yaw + 5 * Y_errDiff + 0 * Y_errSum)/0.6;
 		//set the error and get the cmdSteer
 		*cmdSteer =constrain(-1.0,1.0,bbbb);
 		
-		//print some useful info on the terminal
-		//printf("D_err : %f \n", D_err);
-		//printf("cmdSteer %f \n",abs( *cmdSteer));	
-		//printf("_speed %f \n", _speed);
-		//printf("offset %f \n", offset);
-		//printf("kp_s %f ki_s %f kd_s %f kp_d %f ki_d %f kd_d %f \n", kp_s,ki_s,kd_s,kp_d,ki_d,kd_d);
-		//printf("speedErrSum %f \n", speedErrSum);
-		//printf("cmdAcc %f \n", abs(*cmdAcc));
-		
-        printf("sp %f \n",expectedSpeed);
+        printf("kd_d %f r %f cmdSteer %f \n",kd_d,c.r,abs(*cmdSteer));
 
+#pragma region Wu
+		cv::Mat im1Src = cv::Mat::zeros(cv::Size(400, 400), CV_8UC1);
+
+		for (int i = 0; i < 200; i++)
+			cv::circle(im1Src, cv::Point(200 + _midline[i][0] * 2, 400 - _midline[i][1] * 2), 2, cv::Scalar(100, 100, 100));
+		sprintf_s(cKeyName, "Key: %c is pushed", nKey);
+		cv::putText(im1Src, cKeyName, cv::Point(20, 50), cv::FONT_HERSHEY_TRIPLEX, 1, cv::Scalar(255, 255, 255));
+		cv::imshow("Path", im1Src);
+		cls_visual.Fig1Y(5, 0, 150, 30, "CurrentV", _speed, "+10", _speed + 10.0/*, "-10", _speed - 10.0*/);
+		cls_visual.Fig2Y(3, 0, 150, 0, 1, 10, "CurrentV", _speed, "*Acc:", *cmdAcc, "TargetV", expectedSpeed);
+		int tempKey = cv::waitKey(1);
+		if (tempKey != -1)
+			nKey = tempKey;
+#pragma endregion
 		/******************************************End by Yuan Wei********************************************/
 	}
 }
@@ -272,10 +274,10 @@ void PIDParamSetter()
 {
 	    kp_s=15;//15
 		ki_s=0.8;//0.8
-		kd_s=0;
-		kp_d=9;//10
-		ki_d=0;
-		kd_d=100;//100
+		kd_s=0;//0
+		kp_d= 11;//9
+		ki_d=0;//0
+		kd_d = 60;
 		parameterSet = true;
 	
 }
