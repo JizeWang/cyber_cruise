@@ -19,6 +19,7 @@
 static void userDriverGetParam(float midline[200][2], float yaw, float yawrate, float speed, float acc, float width, int gearbox, float rpm);
 static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, int* cmdGear);
 static int InitFuncPt(int index, void *pt);
+static double min(double, double, double);
 
 // Module Entry Point
 extern "C" int driver_cruise(tModInfo *modInfo)
@@ -81,12 +82,17 @@ double D_errSum=0;//sum of direction error(Integration)      //
 // Speed Control Variables								     //
 circle c;	                                                 //
 circle c1;
+circle c2;
 double expectedSpeed;//      							     //
 double curSpeedErr;//speed error   		                     //
 double speedErrSum=0;//sum of speed error(Integration)       //
 int startPoint;											     //
 int startPoint1;
+int startPoint2;
+double min_r = 0;
 int ld;
+int aim=0;
+double el;
 int kk;
 int delta=10;			//8									 //
 //***********************************************************//
@@ -144,7 +150,7 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 	else
 	{
 		
-
+		min_r = min(c.r, c1.r, c2.r);
 		offset = 0;// _midline[0][0];
 
 		/*
@@ -152,66 +158,78 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 		Enjoy  -_-  
 		*/
 		
-		startPoint = _speed * _speed*0.0015;
-		startPoint1 =0;
+		startPoint = _speed * _speed*0.0019;//ÖÐ
+		startPoint1 =0;//½ü
+		startPoint2= _speed * _speed * 0.003;//Ô¶
 		c = getR(_midline[startPoint][0],_midline[startPoint][1],_midline[startPoint+delta][0],_midline[startPoint+delta][1],_midline[startPoint+2*delta][0],_midline[startPoint+2*delta][1]);
-		c1 = getR(_midline[startPoint1][0], _midline[startPoint1][1], _midline[startPoint1 +5][0], _midline[startPoint1 +5][1], _midline[startPoint1 + 10][0], _midline[startPoint1 + 10][1]);
-		
-		if (c.r < 40) kd_d = 140;
-		else if (c.r < 150) kd_d = 90;
+		c1 = getR(_midline[startPoint1][0], _midline[startPoint1][1], _midline[startPoint1 + delta][0], _midline[startPoint1 + delta][1], _midline[startPoint1 +2 * delta][0], _midline[startPoint1 + 2 * delta][1]);
+		c2 = getR(_midline[startPoint2][0], _midline[startPoint2][1], _midline[startPoint2 + delta][0], _midline[startPoint2 + delta][1], _midline[startPoint2 + 2*delta][0], _midline[startPoint2 + 2* delta][1]);
+		/*
+		if (c.r < 55)  kd_d = 140;
+		else if (c.r < 150)kd_d = 120;
 		else kd_d = 30;
-
+		*/
 		if (c.r <= 60)
 		{
-			expectedSpeed = constrain(60, 100, c.r * c.r * (-0.046) + c.r * 5.3 - 59.66);
+			expectedSpeed = constrain(30, 85, c.r* c.r* (-0.013) + c.r * 2.03 + 11);
 		}
-		else if (c.r <= 200) expectedSpeed = 150;
+		
+		                                                                                                          //else if (c.r <= 150) expectedSpeed = 100;
+		                                                                                                          //else if (c.r <= 200) expectedSpeed = 110;
+		else if (c.r<= 200)
+			expectedSpeed = constrain(85, 110, c.r * c.r * 0.0003 + c.r * 0.0889 + 79.5238);
 		else
 		{
-			expectedSpeed = constrain(100, 400, sqrt(c.r) * 18);
+			expectedSpeed = constrain(120, 160, 120+0.13*c.r);
 		}
 
 		curSpeedErr = expectedSpeed - _speed;
 		speedErrSum = 0.1 * speedErrSum + curSpeedErr;
-		double aaaa = (kp_s * curSpeedErr + ki_s * speedErrSum + offset)/ 2000;
-		double cccc = (-kp_s * curSpeedErr / 5 - offset / 3) / 60;
+		double aaaa = (kp_s * curSpeedErr + ki_s * speedErrSum + offset) / 2000;
+		double cccc = (-kp_s * curSpeedErr / 5 - offset / 3 -abs(*cmdSteer) * 0.08) / 60;
 		if (curSpeedErr > 0)
 		{
-			
-			
 			if (_speed < 30) {
 				*cmdAcc = 1;
 
 				*cmdBrake = 0;
 			}
 			else {
-			
-				if (abs(*cmdSteer) < 0.8)
-				{
-
-					*cmdAcc = constrain(0.0, 1.0, aaaa);
+				if (_speed > 100 && min_r> 499) {
+					*cmdAcc = 0.4;
 
 					*cmdBrake = 0;
-				}
-				
-				else if (abs(*cmdSteer) > 0.9)
-				{
-					*cmdAcc = 0.01 + offset;
-					*cmdBrake = 0;
-				}
-				
-				else
-				{
-					*cmdAcc = 0.11 + offset;
-					*cmdBrake = 0;
+					}
+				else {
+					if (abs(*cmdSteer) < 0.8)
+					{
+
+						*cmdAcc = constrain(0.0, 1.0, aaaa);
+
+						*cmdBrake = 0;
+					}
+
+					else if (abs(*cmdSteer) > 0.9)
+					{
+						*cmdAcc = 0.1 + offset;
+						*cmdBrake = 0;
+					}
+
+					else
+					{
+						*cmdAcc = 0.25 + offset;
+						*cmdBrake = 0;
+					}
 				}
 			}
 		    
 		}
 		else if (curSpeedErr < 0)
 		{
-			*cmdBrake =  constrain(0.0, 0.8,cccc);
-			*cmdAcc = 0.2;
+			
+				*cmdBrake = constrain(0.0, 0.8, cccc);
+				*cmdAcc = 0.1;
+			
 		}
 
 
@@ -233,24 +251,26 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 			
 		//get the error 
 				//D_err = -atan2(_midline[25][0] , _midline[25][1]);
-				ld = 4;
-				D_err = -atan2(2 * 2 * 1.37*_midline[ld][0], ld*ld);
+		aim = 3.3;
+		el = _midline[aim][0];
+	    ld = sqrt(el*el+pow(_midline[aim][1]+2.45,2));
+		D_err = -atan2(2.0 * 2 * 1.37*el, ld*ld);
 				//kk = 40;
 				//D_err = _yaw - atan2(kk * _midline[0][0], _speed);
 	           
 		//the differential and integral operation 
 		D_errDiff = D_err - Tmp;
-		D_errSum = D_errSum + D_err;
+		D_errSum = D_errSum + D_err; 
 		Tmp = D_err;
 
 		Y_errDiff = _yaw - Tmp2;
 		Y_errSum = Y_errSum + _yaw;
 		Tmp2 = _yaw;
-		double bbbb = (kp_d * D_err + ki_d * D_errSum + kd_d * D_errDiff+ 3 * (double)_yaw + 5 * Y_errDiff + 0 * Y_errSum)/0.6;
+		double bbbb = kp_d * D_err + ki_d * D_errSum + kd_d * D_errDiff + 2 * (double)_yaw +6 * Y_errDiff + 0 * Y_errSum;
 		//set the error and get the cmdSteer
 		*cmdSteer =constrain(-1.0,1.0,bbbb);
-		
-        printf("kd_d %f r %f cmdSteer %f \n",kd_d,c.r,abs(*cmdSteer));
+	
+        printf("min_r %f r0 %f r %f r1 %f \n", min_r, c1.r, c.r,c2.r);
 
 #pragma region Wu
 		cv::Mat im1Src = cv::Mat::zeros(cv::Size(400, 400), CV_8UC1);
@@ -260,24 +280,25 @@ static void userDriverSetParam(float* cmdAcc, float* cmdBrake, float* cmdSteer, 
 		sprintf_s(cKeyName, "Key: %c is pushed", nKey);
 		cv::putText(im1Src, cKeyName, cv::Point(20, 50), cv::FONT_HERSHEY_TRIPLEX, 1, cv::Scalar(255, 255, 255));
 		cv::imshow("Path", im1Src);
-		cls_visual.Fig1Y(5, 0, 150, 30, "CurrentV", _speed, "+10", _speed + 10.0/*, "-10", _speed - 10.0*/);
+		cls_visual.Fig1Y(5, -1, 1, 30, "err", _midline[0][0],"r",c.r/500);
 		cls_visual.Fig2Y(3, 0, 150, 0, 1, 10, "CurrentV", _speed, "*Acc:", *cmdAcc, "TargetV", expectedSpeed);
 		int tempKey = cv::waitKey(1);
 		if (tempKey != -1)
 			nKey = tempKey;
 #pragma endregion
+		
 		/******************************************End by Yuan Wei********************************************/
 	}
 }
 
 void PIDParamSetter()
 {
-	    kp_s=15;//15
-		ki_s=0.8;//0.8
+	    kp_s=16;//15 6
+		ki_s=0.7;
 		kd_s=0;//0
-		kp_d= 11;//9
-		ki_d=0;//0
-		kd_d = 60;
+		kp_d= 6.4;
+		ki_d = 0;
+		kd_d = 7;//25 
 		parameterSet = true;
 	
 }
@@ -404,3 +425,12 @@ circle getR(float x1, float y1, float x2, float y2, float x3, float y3)
 	return tmp;
 }
 
+double min(double a, double b, double c)
+{
+	if (a <= b) {
+		if (a <= c) return a;
+		else return c;
+	}
+	else if (b <= c)return b;
+	else return c;
+}
